@@ -8,9 +8,11 @@ import {
   Text,
   List,
   Searchbar,
+  ActivityIndicator,
 } from "react-native-paper";
 import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
+import { showMessage } from "react-native-flash-message";
 
 const CreateModal = ({
   visible,
@@ -19,13 +21,15 @@ const CreateModal = ({
   onUploadDocument,
   authToken,
   documentId,
+  onSuccess,
 }: any) => {
-  const [mode, setMode] = useState("select"); // 'select', 'project', 'document', 'reply'
+  const [mode, setMode] = useState("select");
   const [projects, setProjects] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showDocumentList, setShowDocumentList] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [projectData, setProjectData] = useState({
     project_name: "",
     description: "",
@@ -43,61 +47,77 @@ const CreateModal = ({
     title: "",
     files: [],
     document_id: "",
-    document_title: "", // For display purposes
+    document_title: "",
   });
 
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const response = await axios.get(
-          "https://imo-works-dms.onrender.com/api/projects",
-          {
-            headers: { Authorization: `Bearer ${authToken}` },
-          }
-        );
-        setProjects(response.data);
-      } catch (error) {
-        console.error("Error fetching projects:", error);
-      }
-    };
-
     if (visible) {
       fetchProjects();
     }
   }, [visible, authToken]);
 
   useEffect(() => {
-    const fetchDocuments = async () => {
-      try {
-        const response = await axios.get(
-          "https://imo-works-dms.onrender.com/api/documents",
-          {
-            headers: { Authorization: `Bearer ${authToken}` },
-          }
-        );
-        setDocuments(response.data);
-      } catch (error) {
-        console.error("Error fetching documents:", error);
-      }
-    };
-
     if (visible && mode === "reply") {
       fetchDocuments();
     }
   }, [visible, mode, authToken]);
 
-  const filteredDocuments = documents.filter((doc) =>
-    doc.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const fetchProjects = async () => {
+    try {
+      const response = await axios.get(
+        "https://imo-works-dms.onrender.com/api/projects",
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      );
+      setProjects(response.data);
+    } catch (error) {
+      showMessage({
+        message: "Error fetching projects",
+        type: "danger",
+      });
+      console.error("Error fetching projects:", error);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const response = await axios.get(
+        "https://imo-works-dms.onrender.com/api/documents",
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      );
+      setDocuments(response.data);
+    } catch (error) {
+      showMessage({
+        message: "Error fetching documents",
+        type: "danger",
+      });
+      console.error("Error fetching documents:", error);
+    }
+  };
 
   const handleProjectCreate = async () => {
+    setIsLoading(true);
     try {
       await onCreateProject(projectData);
-      hideModal();
-      setProjectData({ project_name: "", description: "" });
-      setMode("select");
+      showMessage({
+        message: "Project created successfully",
+        type: "success",
+      });
+      if (onSuccess) {
+        await onSuccess();
+      }
+      resetAndClose();
     } catch (error) {
+      showMessage({
+        message: "Error creating project",
+        type: "danger",
+      });
       console.error("Error creating project:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -129,30 +149,39 @@ const CreateModal = ({
         }
       }
     } catch (error) {
+      showMessage({
+        message: "Error selecting files",
+        type: "danger",
+      });
       console.error("Error picking document:", error);
     }
   };
 
   const handleDocumentUpload = async () => {
+    setIsLoading(true);
     try {
       await onUploadDocument(documentData);
-      hideModal();
-      setDocumentData({
-        title: "",
-        project_id: "",
-        project_name: "",
-        reference_number: "",
-        document_type: "",
-        description: "",
-        files: [],
+      showMessage({
+        message: "Document uploaded successfully",
+        type: "success",
       });
-      setMode("select");
+      if (onSuccess) {
+        await onSuccess();
+      }
+      resetAndClose();
     } catch (error) {
+      showMessage({
+        message: "Error uploading document",
+        type: "danger",
+      });
       console.error("Error uploading document:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleReply = async () => {
+    setIsLoading(true);
     try {
       const formData = new FormData();
       formData.append("title", replyData.title);
@@ -171,18 +200,66 @@ const CreateModal = ({
         }
       );
 
-      hideModal();
-      setReplyData({
-        title: "",
-        files: [],
-        document_id: "",
-        document_title: "",
+      showMessage({
+        message: "Reply added successfully",
+        type: "success",
       });
-      setMode("select");
+      if (onSuccess) {
+        await onSuccess();
+      }
+      resetAndClose();
     } catch (error) {
+      showMessage({
+        message: "Error sending reply",
+        type: "danger",
+      });
       console.error("Error sending reply:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const resetAndClose = () => {
+    hideModal();
+    setMode("select");
+    setProjectData({ project_name: "", description: "" });
+    setDocumentData({
+      title: "",
+      project_id: "",
+      project_name: "",
+      reference_number: "",
+      document_type: "",
+      description: "",
+      files: [],
+    });
+    setReplyData({
+      title: "",
+      files: [],
+      document_id: "",
+      document_title: "",
+    });
+    setSearchQuery("");
+    setShowProjectList(false);
+    setShowDocumentList(false);
+  };
+
+  const renderFileList = (files, onRemove) => (
+    <View style={styles.fileList}>
+      {files.map((file, index) => (
+        <View key={index} style={styles.fileItem}>
+          <Text style={styles.fileName}>{file.name}</Text>
+          <Button
+            mode="text"
+            onPress={() => onRemove(index)}
+            textColor="red"
+            disabled={isLoading}
+          >
+            Remove
+          </Button>
+        </View>
+      ))}
+    </View>
+  );
 
   const renderDocumentList = () => (
     <View style={styles.listContainer}>
@@ -193,23 +270,27 @@ const CreateModal = ({
         style={styles.searchbar}
       />
       <ScrollView style={styles.list}>
-        {filteredDocuments.map((doc) => (
-          <List.Item
-            key={doc._id}
-            title={doc.title}
-            description={`Reference: ${doc.reference_number}`}
-            onPress={() => {
-              setReplyData((prev) => ({
-                ...prev,
-                document_id: doc._id,
-                document_title: doc.title,
-              }));
-              setShowDocumentList(false);
-              setSearchQuery("");
-            }}
-            style={styles.listItem}
-          />
-        ))}
+        {documents
+          .filter((doc) =>
+            doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+          .map((doc) => (
+            <List.Item
+              key={doc._id}
+              title={doc.title}
+              description={`Reference: ${doc.reference_number}`}
+              onPress={() => {
+                setReplyData((prev) => ({
+                  ...prev,
+                  document_id: doc._id,
+                  document_title: doc.title,
+                }));
+                setShowDocumentList(false);
+                setSearchQuery("");
+              }}
+              style={styles.listItem}
+            />
+          ))}
       </ScrollView>
     </View>
   );
@@ -237,19 +318,6 @@ const CreateModal = ({
     </View>
   );
 
-  const renderFileList = (files, onRemove) => (
-    <View style={styles.fileList}>
-      {files.map((file, index) => (
-        <View key={index} style={styles.fileItem}>
-          <Text style={styles.fileName}>{file.name}</Text>
-          <Button mode="text" onPress={() => onRemove(index)} textColor="red">
-            Remove
-          </Button>
-        </View>
-      ))}
-    </View>
-  );
-
   const renderContent = () => {
     switch (mode) {
       case "select":
@@ -261,6 +329,7 @@ const CreateModal = ({
               onPress={() => setMode("project")}
               style={styles.modalButton}
               buttonColor="#19572e"
+              disabled={isLoading}
             >
               New Project
             </Button>
@@ -269,6 +338,7 @@ const CreateModal = ({
               onPress={() => setMode("document")}
               style={styles.modalButton}
               buttonColor="#19572e"
+              disabled={isLoading}
             >
               Upload Document
             </Button>
@@ -277,11 +347,13 @@ const CreateModal = ({
               onPress={() => setMode("reply")}
               style={styles.modalButton}
               buttonColor="#19572e"
+              disabled={isLoading}
             >
               Reply to Document
             </Button>
           </View>
         );
+
       case "reply":
         return (
           <ScrollView>
@@ -293,6 +365,7 @@ const CreateModal = ({
                 onFocus={() => setShowDocumentList(true)}
                 mode="outlined"
                 style={styles.input}
+                disabled={isLoading}
               />
               {showDocumentList && renderDocumentList()}
               <TextInput
@@ -303,14 +376,14 @@ const CreateModal = ({
                 }
                 mode="outlined"
                 style={styles.input}
-                disabled={!replyData.document_id}
+                disabled={!replyData.document_id || isLoading}
               />
               <Button
                 mode="contained"
                 onPress={() => handleDocumentPick(true)}
                 style={styles.modalButton}
                 buttonColor="#19572e"
-                disabled={!replyData.document_id}
+                disabled={!replyData.document_id || isLoading}
               >
                 Select Files
               </Button>
@@ -328,12 +401,17 @@ const CreateModal = ({
                   style={[styles.modalButton, styles.buttonFlex]}
                   buttonColor="#19572e"
                   disabled={
+                    isLoading ||
                     !replyData.document_id ||
                     !replyData.title ||
                     replyData.files.length === 0
                   }
                 >
-                  Send Reply
+                  {isLoading ? (
+                    <ActivityIndicator color="white" size={20} />
+                  ) : (
+                    "Send Reply"
+                  )}
                 </Button>
                 <Button
                   mode="outlined"
@@ -349,6 +427,7 @@ const CreateModal = ({
                   }}
                   style={[styles.modalButton, styles.buttonFlex]}
                   textColor="#19572e"
+                  disabled={isLoading}
                 >
                   Back
                 </Button>
@@ -370,6 +449,7 @@ const CreateModal = ({
                 }
                 mode="outlined"
                 style={styles.input}
+                disabled={isLoading}
               />
               <TextInput
                 label="Description"
@@ -381,6 +461,7 @@ const CreateModal = ({
                 multiline
                 numberOfLines={4}
                 style={styles.input}
+                disabled={isLoading}
               />
               <View style={styles.buttonRow}>
                 <Button
@@ -388,14 +469,20 @@ const CreateModal = ({
                   onPress={handleProjectCreate}
                   style={[styles.modalButton, styles.buttonFlex]}
                   buttonColor="#19572e"
+                  disabled={isLoading || !projectData.project_name}
                 >
-                  Create Project
+                  {isLoading ? (
+                    <ActivityIndicator color="white" size={20} />
+                  ) : (
+                    "Create Project"
+                  )}
                 </Button>
                 <Button
                   mode="outlined"
                   onPress={() => setMode("select")}
                   style={[styles.modalButton, styles.buttonFlex]}
                   textColor="#19572e"
+                  disabled={isLoading}
                 >
                   Back
                 </Button>
@@ -417,6 +504,7 @@ const CreateModal = ({
                 }
                 mode="outlined"
                 style={styles.input}
+                disabled={isLoading}
               />
               <TextInput
                 label="Project"
@@ -424,6 +512,7 @@ const CreateModal = ({
                 onFocus={() => setShowProjectList(true)}
                 mode="outlined"
                 style={styles.input}
+                disabled={isLoading}
               />
               {showProjectList && renderProjectList()}
               <TextInput
@@ -437,6 +526,7 @@ const CreateModal = ({
                 }
                 mode="outlined"
                 style={styles.input}
+                disabled={isLoading}
               />
               <TextInput
                 label="Document Type"
@@ -446,8 +536,10 @@ const CreateModal = ({
                 }
                 mode="outlined"
                 style={styles.input}
+                disabled={isLoading}
               />
               <TextInput
+                label="Description"
                 label="Description"
                 value={documentData.description}
                 onChangeText={(text) =>
@@ -457,12 +549,14 @@ const CreateModal = ({
                 multiline
                 numberOfLines={4}
                 style={styles.input}
+                disabled={isLoading}
               />
               <Button
                 mode="contained"
                 onPress={() => handleDocumentPick(false)}
                 style={styles.modalButton}
                 buttonColor="#19572e"
+                disabled={isLoading}
               >
                 Select Files
               </Button>
@@ -479,15 +573,25 @@ const CreateModal = ({
                   onPress={handleDocumentUpload}
                   style={[styles.modalButton, styles.buttonFlex]}
                   buttonColor="#19572e"
-                  disabled={!documentData.files.length}
+                  disabled={
+                    isLoading ||
+                    !documentData.files.length ||
+                    !documentData.title ||
+                    !documentData.project_id
+                  }
                 >
-                  Upload Document
+                  {isLoading ? (
+                    <ActivityIndicator color="white" size={20} />
+                  ) : (
+                    "Upload Document"
+                  )}
                 </Button>
                 <Button
                   mode="outlined"
                   onPress={() => setMode("select")}
                   style={[styles.modalButton, styles.buttonFlex]}
                   textColor="#19572e"
+                  disabled={isLoading}
                 >
                   Back
                 </Button>
@@ -497,17 +601,12 @@ const CreateModal = ({
         );
     }
   };
+
   return (
     <Portal>
       <Modal
         visible={visible}
-        onDismiss={() => {
-          hideModal();
-          setMode("select");
-          setShowProjectList(false);
-          setShowDocumentList(false);
-          setSearchQuery("");
-        }}
+        onDismiss={resetAndClose}
         contentContainerStyle={styles.modalContainer}
       >
         {renderContent()}
@@ -523,7 +622,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     maxHeight: "80%",
   },
-
   contentContainer: {
     padding: 20,
     gap: 20,
@@ -538,19 +636,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginVertical: 5,
   },
-
-  projectList: {
-    maxHeight: 200,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 4,
-    marginTop: -15,
-  },
-  projectItem: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-
   listContainer: {
     maxHeight: 300,
     borderWidth: 1,

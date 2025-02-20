@@ -337,6 +337,7 @@ const ProjectDetailsScreen = () => {
         hideModal={() => setModalVisible(false)}
         onCreateProject={handleCreateProject}
         onUploadDocument={handleUploadDocument}
+        authToken={authToken}
       />
     </View>
   );
